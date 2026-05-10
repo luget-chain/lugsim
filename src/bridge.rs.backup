@@ -1,0 +1,302 @@
+// LUGET Bridge Module
+// Firewalled connection between Core and VM
+// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+
+use crate::core::{CoreState, CLock, Utxo};
+use crate::vm::{VmState, Owner};
+
+#[derive(Debug, Clone)]
+pub struct BridgeState {
+    pub current_epoch: u64,
+    pub blocks_per_epoch: u64,
+    pub pending_withdrawals: Vec<WithdrawalRequest>,
+    pub finalized_epochs: Vec<FinalizedEpoch>,
+    pub emergency_timeout_blocks: u64,
+    pub managed_pause_active: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WithdrawalRequest {
+    pub clock_id: String,
+    pub amount: u64,
+    pub core_owner: String,
+    pub vm_object_id: String,
+    pub epoch_submitted: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct FinalizedEpoch {
+    pub epoch_number: u64,
+    pub state_root: String,
+    pub withdrawals_processed: Vec<String>,
+}
+
+impl BridgeState {
+    pub fn new() -> Self {
+        BridgeState {
+            current_epoch: 0,
+            blocks_per_epoch: 64,
+            pending_withdrawals: Vec::new(),
+            finalized_epochs: Vec::new(),
+            emergency_timeout_blocks: 10_000,
+            managed_pause_active: false,
+        }
+    }
+
+    pub fn advance_epoch(&mut self) {
+        self.current_epoch += 1;
+        let finalized = FinalizedEpoch {
+            epoch_number: self.current_epoch - 1,
+            state_root: format!("state-root-epoch-{}", self.current_epoch - 1),
+            withdrawals_processed: self.pending_withdrawals
+                .iter()
+                .filter(|w| w.epoch_submitted == self.current_epoch - 1)
+                .map(|w| w.clock_id.clone())
+                .collect(),
+        };
+        self.finalized_epochs.push(finalized);
+        println!("[BRIDGE] Epoch {} finalized", self.current_epoch - 1);
+    }
+
+    pub fn deposit(
+        core_state: &mut CoreState,
+        vm_state: &mut VmState,
+        from: &str,
+        amount: u64,
+    ) -> Result<String, String> {
+        let clock_id = format!("clock-{}", core_state.current_block + 1);
+        let clock = CLock {
+            id: clock_id.clone(),
+            amount,
+            owner: from.to_string(),
+            vm_object_id: None,
+            created_at_block: core_state.current_block + 1,
+        };
+
+        let input_id = core_state.utxos
+            .iter()
+            .find(|(_, u)| u.owner == from && u.amount >= amount)
+            .map(|(id, _)| id.clone())
+            .ok_or(format!("No UTXO found for {} with at least {} LGT", from, amount))?;
+
+        let tx = crate::core::Transaction {
+            inputs: vec![input_id],
+            outputs: vec![
+                Utxo {
+                    id: format!("tx-{}-0", core_state.current_block + 1),
+                    amount,
+                    owner: "clock".to_string(),
+                },
+            ],
+            signatures: vec![format!("{}-sig", from)],
+            is_clock_create: true,
+            clock: Some(clock),
+        };
+
+        core_state.execute_transaction(&tx)?;
+        println!("[BRIDGE] CLock created: {} LGT locked", amount);
+
+        let coin = vm_state.create_object(
+            "Coin<LGT>",
+            Owner::Address(from.to_string()),
+            vec![],
+        )?;
+        let coin_id = coin.id.clone();
+        vm_state.objects.insert(coin_id.clone(), coin);
+        println!("[BRIDGE] Coin<LGT> minted in VM: {}", coin_id);
+        println!("[BRIDGE] DEPOSIT COMPLETE: {} LGT {} -> VM {}", amount, from, coin_id);
+
+        Ok(coin_id)
+    }
+
+    pub fn request_withdrawal(
+        &mut self,
+        vm_state: &mut VmState,
+        coin_id: &str,
+        core_owner: &str,
+    ) -> Result<(), String> {
+        let coin = vm_state.find_object(coin_id)
+            .map_err(|e| format!("Coin not found: {}", e))?;
+
+        if coin.type_id != "Coin<LGT>" {
+            return Err("Object is not Coin<LGT>".to_string());
+        }
+
+        vm_state.explicit_destroy(coin_id, "bridge-module")?;
+
+        let request = WithdrawalRequest {
+            clock_id: format!("clock-for-{}", coin_id),
+            amount: 1,
+            core_owner: core_owner.to_string(),
+            vm_object_id: coin_id.to_string(),
+            epoch_submitted: self.current_epoch,
+        };
+
+        self.pending_withdrawals.push(request);
+        println!("[BRIDGE] Withdrawal requested: {} -> {} on Core", coin_id, core_owner);
+        println!("[BRIDGE] Waiting for epoch {} to finalize...", self.current_epoch);
+
+        Ok(())
+    }
+
+    pub fn complete_withdrawal(
+        &self,
+        core_state: &mut CoreState,
+        clock_id: &str,
+        amount: u64,
+        core_owner: &str,
+        epoch_submitted: u64,
+    ) -> Result<(), String> {
+        let required_epoch = epoch_submitted + 1;
+        let epoch_finalized = self.finalized_epochs
+            .iter()
+            .any(|e| e.epoch_number >= required_epoch);
+
+        if !epoch_finalized {
+            return Err(format!(
+                "Epoch {} not yet finalized. Required: {}. Wait for mandatory delay.",
+                epoch_submitted, required_epoch
+            ));
+        }
+
+        let utxo = Utxo {
+            id: format!("withdrawal-{}", clock_id),
+            amount,
+            owner: core_owner.to_string(),
+        };
+
+        core_state.utxos.insert(utxo.id.clone(), utxo);
+        core_state.total_supply += amount;
+        println!("[BRIDGE] WITHDRAWAL COMPLETE: {} LGT released to {} on Core", amount, core_owner);
+
+        Ok(())
+    }
+
+    pub fn unilateral_close(
+        &self,
+        core_state: &mut CoreState,
+        clock_id: &str,
+        core_owner: &str,
+    ) -> Result<(), String> {
+        if self.managed_pause_active {
+            return Err("Managed pause is active. Unilateral close temporarily disabled.".to_string());
+        }
+
+        let clock = core_state.clocks.get(clock_id)
+            .ok_or("CLock not found")?;
+
+        if clock.owner != core_owner {
+            return Err("Only the CLock owner can trigger unilateral close".to_string());
+        }
+
+        let blocks_elapsed = core_state.current_block - clock.created_at_block;
+        if blocks_elapsed < self.emergency_timeout_blocks {
+            return Err(format!(
+                "Timeout not reached. {} of {} blocks elapsed.",
+                blocks_elapsed, self.emergency_timeout_blocks
+            ));
+        }
+
+        let penalty = clock.amount / 1000;
+        let release_amount = clock.amount - penalty;
+
+        core_state.clocks.remove(clock_id);
+
+        let utxo = Utxo {
+            id: format!("unilateral-{}", clock_id),
+            amount: release_amount,
+            owner: core_owner.to_string(),
+        };
+
+        core_state.utxos.insert(utxo.id.clone(), utxo);
+        core_state.total_supply -= penalty;
+        println!("[BRIDGE] UNILATERAL CLOSE: {} LGT released ({} penalty burned)", release_amount, penalty);
+
+        Ok(())
+    }
+
+    pub fn activate_managed_pause(&mut self) {
+        self.managed_pause_active = true;
+        println!("[BRIDGE] Managed pause ACTIVATED.");
+    }
+
+    pub fn deactivate_managed_pause(&mut self) {
+        self.managed_pause_active = false;
+        println!("[BRIDGE] Managed pause DEACTIVATED.");
+    }
+
+    pub fn print_state(&self) {
+        println!("=== BRIDGE STATE ===");
+        println!("Current Epoch: {}", self.current_epoch);
+        println!("Pending Withdrawals: {}", self.pending_withdrawals.len());
+        for w in &self.pending_withdrawals {
+            println!("  {} -> {}, epoch {}", w.vm_object_id, w.core_owner, w.epoch_submitted);
+        }
+        println!("Finalized Epochs: {}", self.finalized_epochs.len());
+        println!("Managed Pause: {}", if self.managed_pause_active { "ACTIVE" } else { "inactive" });
+        println!("==============================");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::CoreState;
+    use crate::vm::{VmState, ObjectType, TypeAbilities};
+
+    fn setup() -> (CoreState, VmState, BridgeState) {
+        let mut core = CoreState::new();
+        core.genesis("alice", 10000);
+        let mut vm = VmState::new();
+        vm.register_type(ObjectType {
+            type_id: "Coin<LGT>".to_string(),
+            name: "Coin<LGT>".to_string(),
+            abilities: TypeAbilities { copy: false, drop: false, store: true, key: true },
+        });
+        let bridge = BridgeState::new();
+        (core, vm, bridge)
+    }
+
+    #[test]
+    fn test_deposit() {
+        let (mut core, mut vm, _bridge) = setup();
+        let result = BridgeState::deposit(&mut core, &mut vm, "alice", 500);
+        assert!(result.is_ok());
+        assert_eq!(core.clocks.len(), 1);
+        assert_eq!(vm.objects.len(), 1);
+    }
+
+    #[test]
+    fn test_deposit_no_funds() {
+        let (mut core, mut vm, _bridge) = setup();
+        let result = BridgeState::deposit(&mut core, &mut vm, "bob", 500);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_withdrawal_after_delay() {
+        let (mut core, mut vm, mut bridge) = setup();
+        let coin_id = BridgeState::deposit(&mut core, &mut vm, "alice", 500).unwrap();
+        bridge.request_withdrawal(&mut vm, &coin_id, "alice").unwrap();
+        // Should fail before epoch advance
+        assert!(bridge.complete_withdrawal(&mut core, "clock-for-obj-1", 1, "alice", 0).is_err());
+        // Advance and succeed
+        bridge.advance_epoch();
+        assert!(bridge.complete_withdrawal(&mut core, "clock-for-obj-1", 1, "alice", 0).is_ok());
+    }
+
+    #[test]
+    fn test_managed_pause_blocks_close() {
+        let (mut core, _vm, mut bridge) = setup();
+        let clock = CLock {
+            id: "clock-test".to_string(), amount: 500, owner: "alice".to_string(),
+            vm_object_id: None, created_at_block: 0,
+        };
+        core.clocks.insert("clock-test".to_string(), clock);
+        core.current_block = 10_001;
+        bridge.activate_managed_pause();
+        assert!(bridge.unilateral_close(&mut core, "clock-test", "alice").is_err());
+        bridge.deactivate_managed_pause();
+        assert!(bridge.unilateral_close(&mut core, "clock-test", "alice").is_ok());
+    }
+}

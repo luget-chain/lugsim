@@ -166,7 +166,7 @@ impl VmState {
         Ok(())
     }
 
-    fn find_object(&self, object_id: &str) -> Result<&VmObject, String> {
+    pub fn find_object(&self, object_id: &str) -> Result<&VmObject, String> {
         if let Some(obj) = self.objects.get(object_id) { return Ok(obj); }
         for obj in self.objects.values() {
             if let Some(found) = Self::search_in_object(obj, object_id) { return Ok(found); }
@@ -174,7 +174,7 @@ impl VmState {
         Err(format!("Object {} not found", object_id))
     }
 
-    fn find_object_mut(&mut self, object_id: &str) -> Result<&mut VmObject, String> {
+    pub fn find_object_mut(&mut self, object_id: &str) -> Result<&mut VmObject, String> {
         if self.objects.contains_key(object_id) {
             return self.objects.get_mut(object_id).ok_or_else(|| "Object not found".to_string());
         }
