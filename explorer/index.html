@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUGET Block Explorer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; color: #e0e0e0; font-family: 'Courier New', monospace; min-height: 100vh; }
+.header { background: #0d0d1a; border-bottom: 2px solid #1a1a3e; padding: 20px; text-align: center; }
+.header h1 { color: #ff6b35; font-size: 2em; letter-spacing: 4px; }
+.header p { color: #888; margin-top: 5px; }
+.stats { display: flex; flex-wrap: wrap; gap: 15px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+.stat-card { background: #111122; border: 1px solid #1a1a3e; border-radius: 8px; padding: 15px 20px; flex: 1; min-width: 150px; text-align: center; }
+.stat-card .label { color: #888; font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; }
+.stat-card .value { color: #ff6b35; font-size: 1.5em; font-weight: bold; margin-top: 5px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 20px 40px; }
+.section-title { color: #ff6b35; font-size: 1.2em; margin: 30px 0 15px; padding-bottom: 8px; border-bottom: 1px solid #1a1a3e; letter-spacing: 2px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+th { background: #111122; color: #aaa; padding: 10px; text-align: left; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #1a1a3e; }
+td { padding: 10px; border-bottom: 1px solid #0d0d1a; font-size: 0.85em; }
+tr:hover { background: #0d0d20; }
+.status-active { color: #4caf50; }
+.status-jailed { color: #f44336; }
+.hash { color: #ff6b35; font-family: monospace; }
+.bench-grid { display: flex; flex-wrap: wrap; gap: 15px; }
+.bench-card { background: #111122; border: 1px solid #1a1a3e; border-radius: 8px; padding: 15px 20px; flex: 1; min-width: 200px; }
+.bench-card .name { color: #aaa; font-size: 0.8em; }
+.bench-card .ops { color: #ff6b35; font-size: 1.3em; font-weight: bold; }
+.bench-card .unit { color: #888; font-size: 0.7em; }
+.footer { text-align: center; padding: 20px; color: #555; font-size: 0.7em; border-top: 1px solid #1a1a3e; margin-top: 40px; }
+a { color: #ff6b35; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.loading { text-align: center; padding: 60px; color: #888; }
+.error { text-align: center; padding: 60px; color: #f44336; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>LUGET</h1>
+<p>Block Explorer — Phase 0 Simulator</p>
+</div>
+<div id="app"><div class="loading">Loading blockchain state...</div></div>
+<div class="footer">
+LUGET Block Explorer v0.9.0 | <a href="https://github.com/luget-chain/lugsim">GitHub</a> | <a href="https://luget-chain.github.io/litepaper">Litepaper</a> | Built from Waigeri, Kenya
+</div>
+<script>
+async function loadState() {
+try {
+const response = await fetch('state.json');
+if (!response.ok) throw new Error('State not found');
+const state = await response.json();
+render(state);
+} catch (err) {
+document.getElementById('app').innerHTML = '<div class="error">Could not load blockchain state. Run <code>cargo run --bin lugexport</code> to generate state.json</div>';
+}
+}
+function render(s) {
+const html = `
+<div class="stats">
+<div class="stat-card"><div class="label">Block Height</div><div class="value">#${s.block_height}</div></div>
+<div class="stat-card"><div class="label">Total Supply</div><div class="value">${(s.total_supply/1000000).toFixed(0)}M LGT</div></div>
+<div class="stat-card"><div class="label">Validators</div><div class="value">${s.validators.length}</div></div>
+<div class="stat-card"><div class="label">Epoch</div><div class="value">${s.governance.epoch}</div></div>
+<div class="stat-card"><div class="label">Active Stake</div><div class="value">${(s.governance.active_stake/1000000).toFixed(1)}M LGT</div></div>
+<div class="stat-card"><div class="label">Proposals</div><div class="value">${s.governance.proposals}</div></div>
+</div>
+<div class="container">
+<h2 class="section-title">→ Latest Blocks</h2>
+<table><thead><tr><th>Height</th><th>Hash</th><th>Proposer</th><th>Txs</th><th>Time</th></tr></thead><tbody>
+${s.blocks.map(b => `<tr><td>#${b.height}</td><td class="hash">${b.hash}</td><td>${b.proposer}</td><td>${b.tx_count}</td><td>${b.timestamp.slice(11,19)}</td></tr>`).join('')}
+</tbody></table>
+<h2 class="section-title">→ Recent Transactions</h2>
+<table><thead><tr><th>Hash</th><th>From</th><th>To</th><th>Amount</th><th>Fee</th><th>Block</th></tr></thead><tbody>
+${s.transactions.map(tx => `<tr><td class="hash">${tx.hash}</td><td>${tx.from}</td><td>${tx.to}</td><td>${tx.amount} LGT</td><td>${tx.fee} LGT</td><td>#${tx.block_height}</td></tr>`).join('')}
+</tbody></table>
+<h2 class="section-title">→ Validators</h2>
+<table><thead><tr><th>ID</th><th>Stake</th><th>Uptime</th><th>Status</th></tr></thead><tbody>
+${s.validators.map(v => `<tr><td>${v.id}</td><td>${(v.stake/1000).toFixed(0)}k LGT</td><td>${v.uptime.toFixed(1)}%</td><td class="${v.status === 'active' ? 'status-active' : 'status-jailed'}">${v.status}</td></tr>`).join('')}
+</tbody></table>
+<h2 class="section-title">→ Performance Benchmarks</h2>
+<div class="bench-grid">
+<div class="bench-card"><div class="name">UTXO Transfers</div><div class="ops">${s.benchmarks.utxo_transfers_per_sec.toFixed(0)}</div><div class="unit">ops/sec</div></div>
+<div class="bench-card"><div class="name">VM Object Creation</div><div class="ops">${s.benchmarks.vm_objects_per_sec.toFixed(0)}</div><div class="unit">ops/sec</div></div>
+<div class="bench-card"><div class="name">Blake3 Hash</div><div class="ops">${s.benchmarks.blake3_hashes_per_sec.toFixed(0)}</div><div class="unit">ops/sec</div></div>
+<div class="bench-card"><div class="name">Ed25519 Sign+Verify</div><div class="ops">${s.benchmarks.ed25519_signs_per_sec.toFixed(0)}</div><div class="unit">ops/sec</div></div>
+<div class="bench-card"><div class="name">BLS Attestation</div><div class="ops">${s.benchmarks.bls_attestations_per_sec.toFixed(0)}</div><div class="unit">ops/sec</div></div>
+<div class="bench-card"><div class="name">Consensus Rounds</div><div class="ops">${s.benchmarks.consensus_rounds_per_sec.toFixed(0)}</div><div class="unit">ops/sec</div></div>
+</div>
+</div>`;
+document.getElementById('app').innerHTML = html;
+}
+loadState();
+</script>
+</body>
+</html>

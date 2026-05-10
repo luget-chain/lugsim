@@ -1,0 +1,122 @@
+{
+  "version": "0.9.0",
+  "block_height": 42,
+  "total_supply": 1000000000,
+  "validators": [
+    {
+      "id": "validator-1",
+      "stake": 100000,
+      "uptime": 100.0,
+      "status": "active"
+    },
+    {
+      "id": "validator-2",
+      "stake": 85000,
+      "uptime": 99.2,
+      "status": "active"
+    },
+    {
+      "id": "validator-3",
+      "stake": 65000,
+      "uptime": 95.7,
+      "status": "active"
+    },
+    {
+      "id": "validator-4",
+      "stake": 50000,
+      "uptime": 100.0,
+      "status": "active"
+    },
+    {
+      "id": "validator-5",
+      "stake": 30000,
+      "uptime": 88.3,
+      "status": "jailed"
+    }
+  ],
+  "blocks": [
+    {
+      "height": 42,
+      "hash": "0x7a3b...c91f",
+      "proposer": "validator-3",
+      "tx_count": 4,
+      "timestamp": "2026-05-10T14:32:00Z"
+    },
+    {
+      "height": 41,
+      "hash": "0x6f2a...d84e",
+      "proposer": "validator-2",
+      "tx_count": 3,
+      "timestamp": "2026-05-10T14:31:48Z"
+    },
+    {
+      "height": 40,
+      "hash": "0x5e1c...b37a",
+      "proposer": "validator-1",
+      "tx_count": 4,
+      "timestamp": "2026-05-10T14:31:36Z"
+    },
+    {
+      "height": 39,
+      "hash": "0x4d0b...a26f",
+      "proposer": "validator-4",
+      "tx_count": 2,
+      "timestamp": "2026-05-10T14:31:24Z"
+    },
+    {
+      "height": 38,
+      "hash": "0x3c9a...91e5",
+      "proposer": "validator-2",
+      "tx_count": 4,
+      "timestamp": "2026-05-10T14:31:12Z"
+    }
+  ],
+  "transactions": [
+    {
+      "hash": "0xabc1...",
+      "from": "alice...",
+      "to": "bob...",
+      "amount": 100,
+      "fee": 5,
+      "block_height": 42
+    },
+    {
+      "hash": "0xabc2...",
+      "from": "bob...",
+      "to": "charlie...",
+      "amount": 50,
+      "fee": 5,
+      "block_height": 42
+    },
+    {
+      "hash": "0xabc3...",
+      "from": "alice...",
+      "to": "dave...",
+      "amount": 200,
+      "fee": 10,
+      "block_height": 42
+    },
+    {
+      "hash": "0xabc4...",
+      "from": "charlie...",
+      "to": "eve...",
+      "amount": 75,
+      "fee": 5,
+      "block_height": 42
+    }
+  ],
+  "governance": {
+    "proposals": 12,
+    "active_stake": 10000000,
+    "dormant_stake": 1000000,
+    "epoch": 5
+  },
+  "benchmarks": {
+    "utxo_transfers_per_sec": 471.0,
+    "vm_objects_per_sec": 54555.0,
+    "blake3_hashes_per_sec": 79259.0,
+    "ed25519_signs_per_sec": 774.0,
+    "bls_attestations_per_sec": 3.0,
+    "consensus_rounds_per_sec": 10213.0
+  }
+}
