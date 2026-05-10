@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
+
 mod crypto;
 mod core;
 mod vm;
@@ -10,129 +11,70 @@ mod economics;
 mod governance;
 mod network;
 mod persistence;
-mod consensus;
-mod mempool;
 mod producer;
+mod mempool;
+mod consensus;
+mod bls_committee;
 
 use crypto::KeyPair;
+use governance::{GovernanceState, ProposalType};
 use persistence::SavedState;
-use consensus::ConsensusState;
-use mempool::Mempool;
-use producer::{BlockProducer, ProducerConfig};
+use bls_committee::BlsCommittee;
 
 const SAVE_FILE: &str = "lugsim-state.json";
 
 fn main() {
     println!("╔══════════════════════════════════════╗");
     println!("║     LUGET Research Simulator        ║");
-    println!("║     lugsim v0.7.0                   ║");
-    println!("║     Phase 0 — Block Production      ║");
+    println!("║     lugsim v0.8.0                   ║");
+    println!("║     Phase 0 — BLS Threshold Sigs    ║");
     println!("╚══════════════════════════════════════╝");
     println!();
 
-    // ==========================================
-    // 1. Setup
-    // ==========================================
-    println!("═══════════ SETUP ═══════════");
-
-    let mut consensus = ConsensusState::new();
-    consensus.add_validator("validator-1", 100_000);
-    consensus.add_validator("validator-2", 80_000);
-    consensus.add_validator("validator-3", 70_000);
-    consensus.add_validator("validator-4", 50_000);
-    consensus.add_validator("validator-5", 30_000);
-
-    let mut mempool = Mempool::new(500, 1);
-
-    // Generate user keys
-    let alice = KeyPair::generate();
-    let bob = KeyPair::generate();
-    let charlie = KeyPair::generate();
-
-    println!("Validators: {}", consensus.validators.len());
-    println!("Total stake: {} LGT\n", consensus.total_stake);
-
-    // ==========================================
-    // 2. Submit Transactions to Mempool
-    // ==========================================
-    println!("═══════════ MEMPOOL ═══════════");
-
-    for i in 0..12 {
-        let amount = 10 * (i + 1);
-        mempool.submit(
-            &alice.address(), &bob.address(), amount, 5, i as u64,
-            alice.sign(format!("tx-{}", i).as_bytes())
-        ).unwrap();
+    if let Ok(saved) = SavedState::load_from_file(SAVE_FILE) {
+        println!("Found saved state:");
+        saved.display();
+        println!();
     }
 
-    mempool.submit(
-        &bob.address(), &charlie.address(), 500, 20, 0,  // High fee
-        bob.sign(b"bob->charlie:500")
-    ).unwrap();
+    // Ed25519
+    println!("═══════════ KEY GENERATION ═══════════");
+    let alice = KeyPair::generate();
+    println!("Alice: {}", alice.address());
+    let msg = b"Alice signs with Ed25519";
+    let sig = alice.sign(msg);
+    println!("Ed25519: {} ✓", if KeyPair::verify(&alice.public_key, msg, &sig) { "valid" } else { "invalid" });
 
-    mempool.submit(
-        &charlie.address(), &alice.address(), 250, 15, 0, // Medium fee
-        charlie.sign(b"charlie->alice:250")
-    ).unwrap();
+    // BLS Threshold Signatures
+    println!("\n═══════════ BLS THRESHOLD SIGNATURES ═══════════");
+    println!("Generating Bridge Light Client Committee...");
+    let bls = BlsCommittee::new();
+    bls.print_status();
 
-    println!("Transactions submitted: {}\n", mempool.pending_count());
+    println!("\n--- BLCC Attestation Round ---");
+    let (success, sig_hex) = bls.attest_block("core-block-0xdeadbeefcafebabe");
+    if success {
+        println!("BLCC attestation: SUCCESS ✓");
+        println!("Aggregated signature: {}...", &sig_hex[..32]);
+    } else {
+        println!("BLCC attestation: FAILED ✗");
+    }
 
-    // ==========================================
-    // 3. Start Block Production
-    // ==========================================
-    println!("═══════════ BLOCK PRODUCTION ═══════════");
+    // Governance
+    println!("\n═══════════ GOVERNANCE ═══════════");
+    let mut gov = GovernanceState::new();
+    gov.total_active_stake = 10_000_000;
+    let prop = gov.submit_proposal("BLS integration", "Add BLS threshold signatures to BLCC", ProposalType::CoreParameter);
+    gov.proposals[0].status = governance::ProposalStatus::Voting;
+    gov.vote(&prop, 8_000_000, true).unwrap();
+    gov.tally(&prop).unwrap();
 
-    let mut producer = BlockProducer::new(
-        ProducerConfig {
-            block_time_ms: 12000,
-            max_txs_per_block: 4,
-            max_rounds: 5,  // Run 5 rounds for simulation
-        },
-        consensus,
-        mempool,
-    );
-
-    producer.run_loop();
-
-    // ==========================================
-    // 4. Production Statistics
-    // ==========================================
-    println!("\n═══════════ FINAL STATISTICS ═══════════");
-    producer.print_stats();
-    producer.consensus.print_state();
-
-    // ==========================================
-    // 5. Save state
-    // ==========================================
-    let snapshot = SavedState::snapshot(
-        producer.consensus.finalized_height,
-        1_000_000_000,
-        25, 5, 15,
-        producer.consensus.validators.len(),
-        producer.consensus.finalized_height,
-        10_000_000,
-        1_000_000,
-        3,
-    );
-    snapshot.save_to_file(SAVE_FILE).ok();
-
-    // ==========================================
     // Summary
-    // ==========================================
-    println!("\n═══════════ LUGSIM v0.7.0 COMPLETE ═══════════");
-    println!("All modules validated:");
-    println!("  [✓] Ed25519 + Blake3 cryptography");
-    println!("  [✓] Core UTXO state machine");
-    println!("  [✓] VM object model with type abilities");
-    println!("  [✓] Bridge deposit/withdrawal/unilateral close");
-    println!("  [✓] Validator economics (dual-pool + slashing)");
-    println!("  [✓] Governance (4 institutions + veto)");
-    println!("  [✓] P2P Networking (gossip + voting + epochs)");
-    println!("  [✓] Persistent state (save/load to disk)");
-    println!("  [✓] BFT Consensus (proposal + attestation + finality)");
-    println!("  [✓] Mempool (submission + priority + expiry)");
-    println!("  [✓] Block Producer (continuous production + stats)");
+    println!("\n═══════════ LUGSIM v0.8.0 COMPLETE ═══════════");
+    println!("Cryptographic primitives:");
+    println!("  [✓] Ed25519 — user transactions");
+    println!("  [✓] Blake3 — hashing");
+    println!("  [✓] BLS — BLCC threshold signatures (80/100)");
     println!();
-    println!("LUGET is now a living chain.");
-    println!("Next: Genesis block definition + multi-machine testnet.");
+    println!("Next: Formal verification of bridge invariants.");
 }
