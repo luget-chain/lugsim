@@ -1,0 +1,8 @@
+{
+  "name": "kipngetich",
+  "public_key_hex": "2a63cb48dc789cbf22854135bb5ae74aa41268632fbcacd4cf3256f36ffea1a2",
+  "secret_key_hex": "d7ba6dd32c3525d70de9e4335fcaef8be1399aee744b04dd927a94ce158aa214",
+  "address": "a28713e3f3c6e39b1f5d751e2f3ecc03390e9f24366b59cc523c5090df89e8e5",
+  "balance": 1000,
+  "created_at": "2026-05-10"
+}

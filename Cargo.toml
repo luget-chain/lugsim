@@ -3,6 +3,14 @@ name = "lugsim"
 version = "0.4.0"
 edition = "2021"
 
+[[bin]]
+name = "lugsim"
+path = "src/main.rs"
+
+[[bin]]
+name = "lugwallet"
+path = "src/bin/lugwallet.rs"
+
 [dependencies]
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 blake3 = "1"
