@@ -88,7 +88,7 @@ impl BridgeState {
                     owner: "clock".to_string(),
                 },
             ],
-            signatures: vec![format!("{}-sig", from)],
+            signatures: vec![(from.to_string(), vec![1,2,3])],
             is_clock_create: true,
             clock: Some(clock),
         };
