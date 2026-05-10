@@ -1,215 +1,220 @@
-// LUGET CLI Wallet
-// Key generation, transaction signing, balance checking
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
-
 use std::env;
 use std::fs;
+use std::path::Path;
 use serde::{Serialize, Deserialize};
+use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
+use rand::rngs::OsRng;
+use blake3::Hasher;
+use hex;
 
-// We'll use the crypto module from the main crate
-// For now, we build a self-contained wallet
-
-/// A wallet that holds a keypair and some metadata
-#[derive(Debug, Serialize, Deserialize)]
-struct Wallet {
-    name: String,
-    public_key_hex: String,
-    secret_key_hex: String,
+struct KeyPair {
+    public_key: VerifyingKey,
+    secret_key: SigningKey,
     address: String,
-    balance: u64,
-    created_at: String,
 }
 
-impl Wallet {
-    fn new(name: &str) -> Self {
-        // Generate a real Ed25519 keypair using simple methods
-        // For the wallet, we'll use a simplified key derivation
-        let secret = format!("wallet-secret-{}-{}", name, std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos());
-        
-        let secret_hash = blake3::hash(secret.as_bytes());
-        let secret_hex = hex::encode(secret_hash.as_bytes());
-        let public_hash = blake3::hash(format!("pub-{}", secret_hex).as_bytes());
-        let public_hex = hex::encode(public_hash.as_bytes());
-        let address = hex::encode(blake3::hash(format!("addr-{}", public_hex).as_bytes()).as_bytes());
+impl KeyPair {
+    fn generate() -> Self {
+        let secret_key = SigningKey::generate(&mut OsRng);
+        let public_key = secret_key.verifying_key();
+        let address = Self::hash_bytes(&public_key.to_bytes());
+        KeyPair { public_key, secret_key, address }
+    }
 
-        Wallet {
-            name: name.to_string(),
-            public_key_hex: public_hex,
-            secret_key_hex: secret_hex,
-            address,
-            balance: 0,
-            created_at: "2026-05-10".to_string(),
+    fn sign(&self, message: &[u8]) -> Vec<u8> {
+        Signer::sign(&self.secret_key, message).to_vec()
+    }
+
+    fn verify(public_key: &VerifyingKey, message: &[u8], signature: &[u8]) -> bool {
+        if let Ok(sig) = Signature::from_slice(signature) {
+            Verifier::verify(public_key, message, &sig).is_ok()
+        } else {
+            false
         }
     }
 
-    fn save(&self) -> Result<(), String> {
-        let filename = format!("{}.wallet.json", self.name);
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Serialization error: {}", e))?;
-        fs::write(&filename, json)
-            .map_err(|e| format!("Write error: {}", e))?;
-        println!("Wallet saved to {}", filename);
-        Ok(())
-    }
-
-    fn load(name: &str) -> Result<Wallet, String> {
-        let filename = format!("{}.wallet.json", name);
-        let json = fs::read_to_string(&filename)
-            .map_err(|e| format!("No wallet found for '{}': {}", name, e))?;
-        serde_json::from_str(&json)
-            .map_err(|e| format!("Deserialization error: {}", e))
-    }
-
-    fn display(&self) {
-        println!("╔══════════════════════════════════╗");
-        println!("║  LUGET Wallet                   ║");
-        println!("╚══════════════════════════════════╝");
-        println!("Name:       {}", self.name);
-        println!("Address:    {}", &self.address[..32]);
-        println!("Pub Key:    {}", &self.public_key_hex[..32]);
-        println!("Balance:    {} LGT", self.balance);
-        println!("Created:    {}", self.created_at);
-        println!("══════════════════════════════════");
-    }
-
-    fn sign_message(&self, message: &str) -> String {
-        let data = format!("{}:{}", self.secret_key_hex, message);
-        hex::encode(blake3::hash(data.as_bytes()).as_bytes())
+    fn hash_bytes(data: &[u8]) -> String {
+        let mut hasher = Hasher::new();
+        hasher.update(data);
+        hex::encode(hasher.finalize().as_bytes())
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct WalletFile {
+    version: String,
+    address: String,
+    public_key_hex: String,
+    secret_key_hex: String,
+    created_at: String,
+}
+
+const WALLET_DIR: &str = ".luget";
+const WALLET_FILE: &str = "wallet.json";
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-
     if args.len() < 2 {
         print_usage();
         return;
     }
 
     match args[1].as_str() {
-        "create" => {
-            let name = if args.len() >= 3 { &args[2] } else { "default" };
-            match Wallet::new(name).save() {
-                Ok(()) => {
-                    let wallet = Wallet::load(name).unwrap();
-                    wallet.display();
-                }
-                Err(e) => println!("Error: {}", e),
-            }
-        }
-        "show" => {
-            let name = if args.len() >= 3 { &args[2] } else { "default" };
-            match Wallet::load(name) {
-                Ok(wallet) => wallet.display(),
-                Err(e) => println!("Error: {}", e),
-            }
-        }
-        "sign" => {
-            if args.len() < 4 {
-                println!("Usage: lugwallet sign <wallet-name> <message>");
-                return;
-            }
-            let name = &args[2];
-            let message = &args[3];
-            match Wallet::load(name) {
-                Ok(wallet) => {
-                    let signature = wallet.sign_message(message);
-                    println!("Message:  {}", message);
-                    println!("Signer:   {}", &wallet.address[..32]);
-                    println!("Signature:{}", signature);
-                }
-                Err(e) => println!("Error: {}", e),
-            }
-        }
-        "list" => {
-            list_wallets();
-        }
-        "balance" => {
-            let name = if args.len() >= 3 { &args[2] } else { "default" };
-            match Wallet::load(name) {
-                Ok(wallet) => println!("{}: {} LGT", wallet.name, wallet.balance),
-                Err(e) => println!("Error: {}", e),
-            }
-        }
+        "generate" => cmd_generate(),
+        "address" => cmd_address(),
+        "balance" => cmd_balance(),
         "send" => {
             if args.len() < 5 {
-                println!("Usage: lugwallet send <from> <to-address> <amount>");
+                println!("Usage: lugwallet send <to_address> <amount> <fee>");
                 return;
             }
-            let from = &args[2];
-            let to = &args[3];
-            let amount: u64 = args[4].parse().unwrap_or(0);
-            
-            match Wallet::load(from) {
-                Ok(mut wallet) => {
-                    if wallet.balance < amount {
-                        println!("Insufficient balance: {} LGT available, {} LGT requested",
-                            wallet.balance, amount);
-                        return;
-                    }
-                    wallet.balance -= amount;
-                    wallet.save().unwrap();
-                    println!("Sent {} LGT from {} to {}", amount, from, to);
-                    println!("New balance: {} LGT", wallet.balance);
-                }
-                Err(e) => println!("Error: {}", e),
-            }
+            cmd_send(&args[2], args[3].parse().unwrap_or(0), args[4].parse().unwrap_or(0));
         }
-        "receive" => {
-            if args.len() < 4 {
-                println!("Usage: lugwallet receive <wallet-name> <amount>");
+        "info" => cmd_info(),
+        "sign" => {
+            if args.len() < 3 {
+                println!("Usage: lugwallet sign <message>");
                 return;
             }
-            let name = &args[2];
-            let amount: u64 = args[3].parse().unwrap_or(0);
-            
-            match Wallet::load(name) {
-                Ok(mut wallet) => {
-                    wallet.balance += amount;
-                    wallet.save().unwrap();
-                    println!("Received {} LGT into {}", amount, name);
-                    println!("New balance: {} LGT", wallet.balance);
-                }
-                Err(e) => println!("Error: {}", e),
-            }
+            cmd_sign(&args[2]);
         }
+        "--version" | "-v" => println!("lugwallet v0.8.0"),
         _ => print_usage(),
     }
 }
 
 fn print_usage() {
-    println!("LUGET CLI Wallet (lugwallet)");
+    println!("╔══════════════════════════════════════╗");
+    println!("║     LUGET CLI Wallet                ║");
+    println!("║     lugwallet v0.8.0                ║");
+    println!("╚══════════════════════════════════════╝");
+    println!();
     println!("Usage:");
-    println!("  lugwallet create <name>          Create a new wallet");
-    println!("  lugwallet show <name>            Show wallet details");
-    println!("  lugwallet sign <name> <message>  Sign a message");
-    println!("  lugwallet list                   List all wallets");
-    println!("  lugwallet balance <name>         Check balance");
-    println!("  lugwallet send <from> <to> <amt> Send LGT");
-    println!("  lugwallet receive <name> <amt>   Receive LGT");
+    println!("  lugwallet generate              Generate a new keypair");
+    println!("  lugwallet address               Show your address");
+    println!("  lugwallet balance               Check balance (simulated)");
+    println!("  lugwallet send <to> <amt> <fee> Create and sign a transaction");
+    println!("  lugwallet sign <message>        Sign a message");
+    println!("  lugwallet info                  Show wallet details");
 }
 
-fn list_wallets() {
-    println!("Wallets:");
-    if let Ok(entries) = fs::read_dir(".") {
-        let mut found = false;
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.ends_with(".wallet.json") {
-                    let wallet_name = name.replace(".wallet.json", "");
-                    if let Ok(wallet) = Wallet::load(&wallet_name) {
-                        println!("  {} — {} LGT — {}", wallet_name, wallet.balance, &wallet.address[..16]);
-                        found = true;
-                    }
-                }
-            }
+fn get_wallet_path() -> String {
+    let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    format!("{}/{}/{}", home, WALLET_DIR, WALLET_FILE)
+}
+
+fn load_wallet() -> Result<WalletFile, String> {
+    let path = get_wallet_path();
+    if !Path::new(&path).exists() {
+        return Err("No wallet found. Run 'lugwallet generate' first.".to_string());
+    }
+    let json = fs::read_to_string(&path).map_err(|e| format!("Read error: {}", e))?;
+    serde_json::from_str(&json).map_err(|e| format!("Parse error: {}", e))
+}
+
+fn save_wallet(wallet: &WalletFile) -> Result<(), String> {
+    let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let dir = format!("{}/{}", home, WALLET_DIR);
+    let _ = fs::create_dir_all(&dir);
+    let path = get_wallet_path();
+    let json = serde_json::to_string_pretty(wallet).map_err(|e| format!("Serialize error: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Write error: {}", e))?;
+    println!("Wallet saved to {}", path);
+    Ok(())
+}
+
+fn cmd_generate() {
+    println!("Generating new LUGET keypair...");
+    let keypair = KeyPair::generate();
+    let wallet = WalletFile {
+        version: "0.8.0".to_string(),
+        address: keypair.address.clone(),
+        public_key_hex: hex::encode(keypair.public_key.to_bytes()),
+        secret_key_hex: hex::encode(keypair.secret_key.to_bytes()),
+        created_at: "2026-05-10".to_string(),
+    };
+    save_wallet(&wallet).unwrap();
+    println!();
+    println!("╔══════════════════════════════════════╗");
+    println!("║  LUGET Wallet Generated             ║");
+    println!("║  Address: {}  ║", &wallet.address[..48]);
+    println!("║           {}  ║", &wallet.address[48..]);
+    println!("╚══════════════════════════════════════╝");
+    println!();
+    println!("Never share your secret key with anyone.");
+}
+
+fn cmd_address() {
+    match load_wallet() {
+        Ok(w) => println!("{}", w.address),
+        Err(e) => println!("{}", e),
+    }
+}
+
+fn cmd_balance() {
+    match load_wallet() {
+        Ok(w) => {
+            println!("Address: {}...", &w.address[..32]);
+            println!("Balance: 0 LGT (simulated — node query available at testnet)");
         }
-        if !found {
-            println!("  No wallets found. Create one with: lugwallet create <name>");
+        Err(e) => println!("{}", e),
+    }
+}
+
+fn cmd_send(to: &str, amount: u64, fee: u64) {
+    match load_wallet() {
+        Ok(w) => {
+            let secret_bytes: [u8; 32] = hex::decode(&w.secret_key_hex).unwrap()[..32].try_into().unwrap();
+            let secret_key = SigningKey::from_bytes(&secret_bytes);
+            let tx_data = format!("{}:{}:{}:{}", w.address, to, amount, fee);
+            let signature = Signer::sign(&secret_key, tx_data.as_bytes());
+            let sig_hex = hex::encode(signature.to_vec());
+            let mut hasher = Hasher::new();
+            hasher.update(tx_data.as_bytes());
+            hasher.update(&signature.to_vec());
+            let tx_hash = hex::encode(hasher.finalize().as_bytes());
+
+            println!("╔══════════════════════════════════════╗");
+            println!("║  Transaction Signed                 ║");
+            println!("║  Tx Hash: {}  ║", &tx_hash[..48]);
+            println!("║  From:    {}...  ║", &w.address[..32]);
+            println!("║  To:      {}  ║", to);
+            println!("║  Amount:  {} LGT                    ║", amount);
+            println!("║  Fee:     {} LGT                    ║", fee);
+            println!("║  Sig:     {}...  ║", &sig_hex[..32]);
+            println!("║  Status:  SIGNED ✓                  ║");
+            println!("╚══════════════════════════════════════╝");
         }
+        Err(e) => println!("{}", e),
+    }
+}
+
+fn cmd_sign(message: &str) {
+    match load_wallet() {
+        Ok(w) => {
+            let secret_bytes: [u8; 32] = hex::decode(&w.secret_key_hex).unwrap()[..32].try_into().unwrap();
+            let secret_key = SigningKey::from_bytes(&secret_bytes);
+            let signature = Signer::sign(&secret_key, message.as_bytes());
+            println!("Message:   {}", message);
+            println!("Signer:    {}...", &w.address[..32]);
+            println!("Signature: {}...", &hex::encode(signature.to_vec())[..32]);
+            println!("Status:    SIGNED ✓");
+        }
+        Err(e) => println!("{}", e),
+    }
+}
+
+fn cmd_info() {
+    match load_wallet() {
+        Ok(w) => {
+            println!("╔══════════════════════════════════════╗");
+            println!("║  Wallet Info                        ║");
+            println!("║  Version: {}                       ║", w.version);
+            println!("║  Created: {}          ║", w.created_at);
+            println!("║  Address: {}  ║", &w.address[..32]);
+            println!("║           {}  ║", &w.address[32..]);
+            println!("╚══════════════════════════════════════╝");
+        }
+        Err(e) => println!("{}", e),
     }
 }
