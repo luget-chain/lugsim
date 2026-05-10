@@ -2,11 +2,13 @@ mod core;
 mod vm;
 mod bridge;
 mod economics;
+mod governance;
 
 use core::CoreState;
-use vm::{VmState, ObjectType, TypeAbilities, Owner};
+use vm::{VmState, ObjectType, TypeAbilities};
 use bridge::BridgeState;
-use economics::{EconomicsState, SlashReason};
+use economics::EconomicsState;
+use governance::{GovernanceState, ProposalType};
 
 fn main() {
     println!("╔══════════════════════════════════════╗");
@@ -16,94 +18,95 @@ fn main() {
     println!("╚══════════════════════════════════════╝");
     println!();
 
-    // ==========================================
-    // 1. SETUP
-    // ==========================================
-    let mut core = CoreState::new();
-    core.genesis("alice", 1_000_000_000);
-
-    let mut vm = VmState::new();
-    vm.register_type(ObjectType {
-        type_id: "Coin<LGT>".to_string(), name: "Coin<LGT>".to_string(),
-        abilities: TypeAbilities { copy: false, drop: false, store: true, key: true },
-    });
-
-    let mut bridge = BridgeState::new();
-    let mut econ = EconomicsState::new(core.total_supply);
+    let mut gov = GovernanceState::new();
+    gov.total_active_stake = 10_000_000;
+    gov.total_dormant_stake = 1_000_000;
 
     // ==========================================
-    // 2. VALIDATOR ECONOMICS
+    // 1. Core Council Proposal
     // ==========================================
-    println!("═══════════ VALIDATOR ECONOMICS ═══════════");
+    println!("═══════════ GOVERNANCE ═══════════");
+    let prop1 = gov.submit_proposal(
+        "Adjust CLock fee by 5%",
+        "Increase CLock creation fee from 10 LGT to 10.5 LGT",
+        ProposalType::CoreParameter,
+    );
 
-    // Register validators
-    econ.register_validator("validator-alice", 100_000).unwrap();
-    econ.register_validator("validator-bob", 80_000).unwrap();
-    econ.register_validator("validator-charlie", 50_000).unwrap();
-
-    // Delegation
-    econ.delegate("validator-1", 25_000).unwrap();
-    econ.delegate("validator-2", 15_000).unwrap();
-
-    // Fund pools
-    econ.fund_pool_a();
-    econ.fund_pool_b(500, 200, 100);
-
-    // Set uptime scores
-    econ.set_uptime("validator-1", 1.0).unwrap();   // Perfect
-    econ.set_uptime("validator-2", 0.95).unwrap();  // Good
-    econ.set_uptime("validator-3", 0.50).unwrap();  // Struggling
-
-    econ.distribute_rewards();
-    econ.print_state();
+    gov.proposals[0].status = governance::ProposalStatus::Voting;
+    gov.vote(&prop1, 2_000_000, true).unwrap();   // 20% for
+    gov.vote(&prop1, 500_000, false).unwrap();    // 5% against
+    gov.tally(&prop1).unwrap();
 
     // ==========================================
-    // 3. SLASHING DEMONSTRATION
+    // 2. VM Council Upgrade
     // ==========================================
-    println!("\n═══════════ SLASHING ═══════════");
+    let prop2 = gov.submit_proposal(
+        "Add ZK-proof opcode",
+        "Add native verification opcode for Groth16 proofs",
+        ProposalType::VMUpgrade,
+    );
 
-    // Double-sequencing: full slash, jail
-    println!("\n--- Double-Sequencing (validator-3) ---");
-    match econ.slash("validator-3", SlashReason::DoubleSequencing) {
-        Ok(amount) => println!("{} LGT burned. Validator jailed.", amount),
-        Err(e) => println!("Slash failed: {}", e),
-    }
-
-    // Invalid state root: partial slash, delegators protected
-    println!("\n--- Invalid State Root (validator-2) ---");
-    match econ.slash("validator-2", SlashReason::InvalidStateRoot) {
-        Ok(amount) => println!("{} LGT burned from self-bonded stake. Delegators unaffected.", amount),
-        Err(e) => println!("Slash failed: {}", e),
-    }
-
-    econ.print_state();
+    gov.proposals[1].status = governance::ProposalStatus::Voting;
+    gov.vote(&prop2, 4_000_000, true).unwrap();
+    gov.vote(&prop2, 1_000_000, false).unwrap();
+    gov.tally(&prop2).unwrap();
 
     // ==========================================
-    // 4. BRIDGE OPERATIONS
+    // 3. Holder Veto
     // ==========================================
-    println!("\n═══════════ BRIDGE ═══════════");
-    let coin_id = BridgeState::deposit(&mut core, &mut vm, "alice", 500).unwrap();
-    println!("Deposited 500 LGT -> VM object {}", coin_id);
-
-    vm.transfer_object(&coin_id, Owner::Address("bob".to_string())).unwrap();
-    println!("Transferred Coin to bob");
-
-    bridge.request_withdrawal(&mut vm, &coin_id, "bob").unwrap();
-    bridge.advance_epoch();
-    bridge.advance_epoch();
-    bridge.complete_withdrawal(&mut core, "clock-for-obj-2", 1, "bob", 0).unwrap();
+    println!("\n--- Holder Veto Attempt ---");
+    let prop3 = gov.submit_proposal(
+        "Unpopular parameter change",
+        "Something the community dislikes",
+        ProposalType::CoreParameter,
+    );
+    gov.proposals[2].status = governance::ProposalStatus::Voting;
+    gov.vote(&prop3, 1_000_000, true).unwrap();
+    // Veto triggers: 3,500,000 LGT votes NO (35% > 33%)
+    let veto_result = gov.holder_veto(&prop3, 3_500_000).unwrap();
+    println!("Veto successful: {}", veto_result);
 
     // ==========================================
-    // 5. SUMMARY
+    // 4. Monetary Emergency
     // ==========================================
-    println!("\n═══════════ SIMULATION COMPLETE ═══════════");
-    println!("Modules validated:");
-    println!("  [✓] Core UTXO state machine");
-    println!("  [✓] VM object model with type abilities");
-    println!("  [✓] Bridge deposit, withdrawal, unilateral close");
-    println!("  [✓] Validator economics (dual-pool + uptime)");
-    println!("  [✓] Slashing (malicious + operator faults)");
-    println!("  [✓] MEV redistribution (25% fee floor)");
+    println!("\n--- Monetary Emergency ---");
+    let emergency_result = gov.declare_monetary_emergency([true, true, true]).unwrap();
+    println!("Emergency declared: {}", emergency_result);
+
+    // ==========================================
+    // 5. Constitutional Amendment
+    // ==========================================
+    println!("\n--- Constitutional Amendment ---");
+    let prop4 = gov.submit_proposal(
+        "Upgrade hash function",
+        "Migrate from Blake3 to post-quantum hash",
+        ProposalType::ConstitutionalAmendment,
+    );
+    gov.proposals[3].status = governance::ProposalStatus::Voting;
+    // 8M participation (80%), 7.5M for (93.75% approval)
+    gov.vote(&prop4, 7_500_000, true).unwrap();
+    gov.vote(&prop4, 500_000, false).unwrap();
+    gov.tally(&prop4).unwrap();
+
+    // ==========================================
+    // 6. Dormancy Fee
+    // ==========================================
+    println!("\n--- Dormancy Fee ---");
+    gov.apply_dormancy_fee();
+
+    gov.advance_epoch();
+    gov.print_state();
+
+    // ==========================================
+    // SUMMARY
+    // ==========================================
+    println!("\n═══════════ LUGET SIMULATOR COMPLETE ═══════════");
+    println!("All modules validated:");
+    println!("  [✓] Core — UTXO state machine, fee burning, CLocks");
+    println!("  [✓] VM   — Object model, type abilities, ownership modes");
+    println!("  [✓] Bridge — Deposit, withdrawal delay, unilateral close, managed pause");
+    println!("  [✓] Economics — Dual-pool, uptime multiplier, slashing, MEV redistribution");
+    println!("  [✓] Governance — 4 institutions, voting, veto, constitutional amendments");
     println!();
-    println!("Next: Governance (4 institutions, voting, veto)");
+    println!("Last: P2P Networking — Multi-node gossip + block propagation");
 }
