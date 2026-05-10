@@ -1,14 +1,14 @@
 {
   "version": "0.4.0",
-  "epoch": 7,
-  "block_height": 42,
+  "epoch": 5,
+  "block_height": 5,
   "total_supply": 1000000000,
-  "utxo_count": 15,
-  "clock_count": 3,
-  "vm_object_count": 8,
-  "validator_count": 4,
+  "utxo_count": 20,
+  "clock_count": 5,
+  "vm_object_count": 12,
+  "validator_count": 5,
   "active_stake": 10000000,
   "dormant_stake": 1000000,
-  "proposal_count": 1,
+  "proposal_count": 2,
   "timestamp": "2026-05-10T00:00:00Z"
 }
