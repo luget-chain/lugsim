@@ -202,7 +202,7 @@ impl Mempool {
 
     /// Broadcast a transaction to peer nodes (placeholder for P2P integration)
     pub fn broadcast_to_peers(&self, tx_id: &str) {
-        if let Some(tx) = self.transactions.get(tx_id) {
+        if let Some(_tx) = self.transactions.get(tx_id) {
             println!("[MEMPOOL] Broadcasting tx {} to peers", &tx_id[..16]);
             // In production: send to all connected peers via P2P
         }

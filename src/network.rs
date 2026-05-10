@@ -209,7 +209,7 @@ pub fn run_multi_node_simulation() {
     }
 
     // Start all listeners
-    let handles: Vec<_> = validators.iter().map(|v| v.node.start_listening()).collect();
+    let _handles: Vec<_> = validators.iter().map(|v| v.node.start_listening()).collect();
 
     // Give listeners time to start
     thread::sleep(Duration::from_millis(500));

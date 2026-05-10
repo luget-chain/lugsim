@@ -4,7 +4,6 @@
 
 use std::env;
 use std::fs;
-use std::io::{self, Write};
 use serde::{Serialize, Deserialize};
 
 // We'll use the crypto module from the main crate
