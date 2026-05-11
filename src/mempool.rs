@@ -1,6 +1,6 @@
 // LUGET Mempool Module
 // Shared pending transaction pool
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};

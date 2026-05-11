@@ -1,6 +1,6 @@
 // LUGET BLS Committee Module
 // Threshold signatures for the Bridge Light Client Committee (BLCC)
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use blst::min_pk::{SecretKey, PublicKey, Signature, AggregateSignature};
 use rand::RngCore;

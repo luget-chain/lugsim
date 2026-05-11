@@ -1,6 +1,6 @@
 // LUGET Validator Economics Module
 // Dual-pool revenue, uptime multiplier, slashing, MEV redistribution
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 /// Represents a single validator in the network
 #[derive(Debug, Clone)]

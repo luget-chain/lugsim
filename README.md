@@ -69,7 +69,7 @@ h1 { color: #ff5f1f; font-size: 3.5em; letter-spacing: 8px; margin-bottom: 10px;
 </div>
 
 <p class="origin">
-Built from Waigeri, Bomet County, Kenya<br>
+Built from Kenya<br>
 by Kipngetich Clinton — a civil engineering graduate with a phone and a conviction.
 </p>
 </body>

@@ -1,6 +1,6 @@
 // LUGET VM Module
 // Object-centric programmable layer
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use std::collections::HashMap;
 

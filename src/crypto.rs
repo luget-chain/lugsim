@@ -1,6 +1,6 @@
 // LUGET Cryptography Module
 // Ed25519 signatures, Blake3 hashing, key generation
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
 use rand::rngs::OsRng;

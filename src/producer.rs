@@ -1,6 +1,6 @@
 // LUGET Block Producer Module
 // Continuous block production loop
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use crate::consensus::ConsensusState;
 use crate::mempool::Mempool;

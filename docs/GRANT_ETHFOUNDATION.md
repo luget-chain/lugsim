@@ -1,6 +1,6 @@
 # Ethereum Foundation ESP Grant Application
 ## LUGET — Dual-Domain Layer-1 Blockchain
-**Submitted by:** Kipngetich Clinton | **Location:** Waigeri, Bomet County, Kenya | **Contact:** [email protected]
+**Submitted by:** Kipngetich Clinton | **Location:** Kenya | **Contact:** [email protected]
 
 ## 1. Project Summary
 LUGET is a dual-domain Layer-1 blockchain that separates sound money (UTXO Core) from programmability (Object VM) via a BLS-secured firewalled bridge. 66 tests. Zero failures. Mathematically proven invariants. No premine. No VCs. Built from Kenya.

@@ -1,6 +1,6 @@
 // LUGET Governance Module
 // Quadripartite governance: Core Council, VM Council, Monetary Commission, Holder Veto
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 #[derive(Debug, Clone)]
 pub struct Proposal {

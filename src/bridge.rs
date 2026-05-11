@@ -1,6 +1,6 @@
 // LUGET Bridge Module
 // Firewalled connection between Core and VM
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use crate::core::{CoreState, CLock, Utxo};
 use crate::vm::{VmState, Owner};

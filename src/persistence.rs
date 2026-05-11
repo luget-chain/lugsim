@@ -1,6 +1,6 @@
 // LUGET Persistence Module
 // Save and load simulator state to/from disk
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use serde::{Serialize, Deserialize};
 use std::fs;

@@ -29,4 +29,4 @@ We are seeking $30,000 for:
 LUGET advances blockchain security by proving that monetary sovereignty and programmability can coexist without compromising each other. The architecture, formal verification, and zero-insider distribution model are public goods available to the entire ecosystem.
 
 ## Team
-Kipngetich Clinton — Solo founder and architect. Civil engineering graduate. Built from Waigeri, Bomet County, Kenya.
+Kipngetich Clinton — Solo founder and architect. Civil engineering graduate. Built from Kenya.

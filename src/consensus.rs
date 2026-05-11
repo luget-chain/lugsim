@@ -1,6 +1,6 @@
 // LUGET Consensus Module
 // BFT consensus engine: block proposal, attestation, finality
-// Kipngetich Clinton, Waigeri, Bomet County, Kenya
+// Kipngetich Clinton, Kenya
 
 use std::collections::HashMap;
 use crate::crypto::{hash_str, KeyPair};
